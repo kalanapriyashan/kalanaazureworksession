@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>// ACCESS GRANTED</title>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{background:#000;font-family:'Courier New',monospace;color:#00FF41;overflow-x:hidden;min-height:100vh;}
+
+    canvas{position:fixed;top:0;left:0;z-index:0;opacity:0.15;}
+
+    .wrap{position:relative;z-index:1;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px;}
+
+    /* scanline overlay */
+    .scanlines{position:fixed;inset:0;z-index:2;pointer-events:none;background:repeating-linear-gradient(0deg,rgba(0,0,0,0.03) 0px,rgba(0,0,0,0.03) 1px,transparent 1px,transparent 2px);}
+
+    /* CRT flicker */
+    @keyframes flicker{0%,100%{opacity:1}92%{opacity:1}93%{opacity:0.85}94%{opacity:1}97%{opacity:0.9}98%{opacity:1}}
+    .wrap{animation:flicker 8s infinite;}
+
+    /* ── SKULL / ASCII ART ── */
+    .ascii{
+      font-size:clamp(8px,1.5vw,13px);
+      line-height:1.2;
+      color:#00FF41;
+      text-shadow:0 0 8px #00FF41;
+      margin-bottom:32px;
+      text-align:center;
+      white-space:pre;
+      letter-spacing:1px;
+    }
+
+    /* ── TERMINAL BOX ── */
+    .terminal{
+      width:100%;max-width:680px;
+      border:1px solid #00FF41;
+      border-radius:4px;
+      overflow:hidden;
+      box-shadow:0 0 30px rgba(0,255,65,0.15),inset 0 0 30px rgba(0,255,65,0.02);
+    }
+
+    .term-bar{
+      background:rgba(0,255,65,0.08);
+      padding:8px 16px;
+      display:flex;align-items:center;gap:8px;
+      border-bottom:1px solid rgba(0,255,65,0.2);
+    }
+    .dot{width:10px;height:10px;border-radius:50%;}
+    .d1{background:#FF5F57;box-shadow:0 0 4px #FF5F57;}
+    .d2{background:#FEBC2E;box-shadow:0 0 4px #FEBC2E;}
+    .d3{background:#28C840;box-shadow:0 0 4px #28C840;}
+    .term-title{margin-left:auto;margin-right:auto;font-size:11px;color:rgba(0,255,65,0.5);letter-spacing:2px;text-transform:uppercase;}
+
+    .term-body{padding:24px 24px 28px;min-height:320px;}
+
+    .line{font-size:13px;line-height:2;color:rgba(0,255,65,0.85);}
+    .line .prompt{color:rgba(0,255,65,0.4);}
+    .line .cmd{color:#fff;}
+    .line .out{color:rgba(0,255,65,0.6);}
+    .line .err{color:#FF5F57;}
+    .line .warn{color:#FEBC2E;}
+    .line .ok{color:#00FF41;text-shadow:0 0 6px #00FF41;}
+    .line .dim{color:rgba(0,255,65,0.3);}
+
+    .cursor{
+      display:inline-block;
+      width:8px;height:14px;
+      background:#00FF41;
+      vertical-align:middle;
+      margin-left:2px;
+      animation:cur 1s step-end infinite;
+    }
+    @keyframes cur{0%,100%{opacity:1}50%{opacity:0}}
+
+    /* ── STATS ROW ── */
+    .stats{
+      display:grid;grid-template-columns:repeat(4,1fr);
+      gap:12px;max-width:680px;width:100%;margin-top:16px;
+    }
+    .stat{
+      border:1px solid rgba(0,255,65,0.2);
+      border-radius:4px;padding:14px;text-align:center;
+      background:rgba(0,255,65,0.02);
+      transition:border-color .2s,background .2s;
+    }
+    .stat:hover{border-color:rgba(0,255,65,0.6);background:rgba(0,255,65,0.06);}
+    .stat-val{font-size:22px;font-weight:900;color:#00FF41;text-shadow:0 0 10px #00FF41;letter-spacing:-1px;}
+    .stat-label{font-size:9px;color:rgba(0,255,65,0.35);letter-spacing:2px;text-transform:uppercase;margin-top:4px;}
+
+    /* ── QUOTE ── */
+    .quote-box{
+      max-width:680px;width:100%;
+      border-left:2px solid #00FF41;
+      padding:12px 20px;margin-top:16px;
+      background:rgba(0,255,65,0.02);
+    }
+    #quote{font-size:13px;color:rgba(0,255,65,0.7);line-height:1.7;font-style:italic;min-height:40px;}
+    .quote-author{font-size:10px;color:rgba(0,255,65,0.3);letter-spacing:2px;margin-top:6px;text-transform:uppercase;}
+
+    /* ── BOTTOM BAR ── */
+    .bottom-bar{
+      max-width:680px;width:100%;
+      display:flex;align-items:center;justify-content:space-between;
+      flex-wrap:wrap;gap:8px;
+      border-top:1px solid rgba(0,255,65,0.1);
+      padding-top:14px;margin-top:14px;
+    }
+    .bottom-bar span{font-size:10px;color:rgba(0,255,65,0.25);letter-spacing:1.5px;text-transform:uppercase;}
+    .online{color:#00FF41;font-size:10px;display:flex;align-items:center;gap:6px;letter-spacing:1px;}
+    .online-dot{width:5px;height:5px;background:#00FF41;border-radius:50%;animation:blink 1.5s infinite;box-shadow:0 0 4px #00FF41;}
+    @keyframes blink{0%,100%{opacity:1}50%{opacity:0.2}}
+
+    @media(max-width:560px){.stats{grid-template-columns:repeat(2,1fr);}.ascii{font-size:7px;}}
+  </style>
+</head>
+<body>
+<canvas id="matrix"></canvas>
+<div class="scanlines"></div>
+
+<div class="wrap">
+
+  <div class="ascii">
+ ░▒▓█████▓▒░  ░▒▓███████▓▒░  ░▒▓████████▓▒░  ░▒▓██████▓▒░  ░▒▓████████▓▒░ 
+ ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░░▒▓█▓▒░    ░▒▓█▓▒░   ░▒▓█▓▒░░▒▓█▓▒░    ░▒▓█▓▒░   
+ ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░░▒▓█▓▒░    ░▒▓█▓▒░   ░▒▓█▓▒░           ░▒▓█▓▒░   
+ ░▒▓████████▓▒░ ░▒▓███████▓▒░     ░▒▓█▓▒░   ░▒▓█▓▒░            ░▒▓█▓▒░   
+ ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░░▒▓█▓▒░    ░▒▓█▓▒░   ░▒▓█▓▒░            ░▒▓█▓▒░   
+ ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░░▒▓█▓▒░    ░▒▓█▓▒░   ░▒▓█▓▒░░▒▓█▓▒░    ░▒▓█▓▒░   
+ ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░░▒▓█▓▒░    ░▒▓█▓▒░    ░▒▓██████▓▒░     ░▒▓█▓▒░   </div>
+
+  <div class="terminal">
+    <div class="term-bar">
+      <div class="dot d1"></div>
+      <div class="dot d2"></div>
+      <div class="dot d3"></div>
+      <div class="term-title">root@localhost ~ zsh</div>
+    </div>
+    <div class="term-body" id="term"></div>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="stat-val" id="s1">0</div><div class="stat-label">Packets Sent</div></div>
+    <div class="stat"><div class="stat-val" id="s2">0%</div><div class="stat-label">CPU Usage</div></div>
+    <div class="stat"><div class="stat-val" id="s3">0ms</div><div class="stat-label">Ping</div></div>
+    <div class="stat"><div class="stat-val" id="s4">0</div><div class="stat-label">Ports Open</div></div>
+  </div>
+
+  <div class="quote-box">
+    <div id="quote">Initializing quote engine...</div>
+    <div class="quote-author" id="author"></div>
+  </div>
+
+  <div class="bottom-bar">
+    <span>kernel v5.15.0-generic</span>
+    <span id="clock"></span>
+    <div class="online"><span class="online-dot"></span>SYSTEM ONLINE</div>
+  </div>
+
+</div>
+
+<script>
+// Matrix rain
+const canvas=document.getElementById('matrix');
+const ctx=canvas.getContext('2d');
+function resize(){canvas.width=window.innerWidth;canvas.height=window.innerHeight;}
+resize();window.addEventListener('resize',resize);
+const chars='ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$%<>{}[]アイウエオカキクケコ'.split('');
+const fs=14;let drops=Array(Math.floor(window.innerWidth/fs)).fill(1);
+function draw(){
+  ctx.fillStyle='rgba(0,0,0,0.05)';ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.font=fs+'px Courier New';
+  for(let i=0;i<drops.length;i++){
+    const c=chars[Math.floor(Math.random()*chars.length)];
+    ctx.fillStyle=Math.random()>.97?'#fff':'#00FF41';
+    ctx.fillText(c,i*fs,drops[i]*fs);
+    if(drops[i]*fs>canvas.height&&Math.random()>.975)drops[i]=0;
+    drops[i]++;
+  }
+}
+setInterval(draw,35);
+
+// Terminal lines
+const lines=[
+  {t:400, html:'<div class="line"><span class="prompt">root@localhost:~$ </span><span class="cmd">whoami</span></div>'},
+  {t:900, html:'<div class="line"><span class="out">  root</span></div>'},
+  {t:1400,html:'<div class="line"><span class="prompt">root@localhost:~$ </span><span class="cmd">nmap -sV 192.168.1.0/24</span></div>'},
+  {t:2000,html:'<div class="line"><span class="warn">  Starting Nmap 7.94 ( https://nmap.org )</span></div>'},
+  {t:2500,html:'<div class="line"><span class="out">  Scanning 256 hosts...</span></div>'},
+  {t:3200,html:'<div class="line"><span class="ok">  Host: 192.168.1.1  &nbsp;&nbsp;Ports: 22/open 80/open 443/open</span></div>'},
+  {t:3700,html:'<div class="line"><span class="ok">  Host: 192.168.1.42 &nbsp;Ports: 8080/open 3306/open</span></div>'},
+  {t:4200,html:'<div class="line"><span class="err">  Host: 192.168.1.99 &nbsp;Ports: 4444/open ← suspicious</span></div>'},
+  {t:4900,html:'<div class="line"><span class="dim">  Nmap done: 256 hosts scanned in 4.32s</span></div>'},
+  {t:5500,html:'<div class="line"><span class="prompt">root@localhost:~$ </span><span class="cmd">ssh -i id_rsa admin@192.168.1.1</span></div>'},
+  {t:6200,html:'<div class="line"><span class="warn">  Warning: Permanently added \'192.168.1.1\' to known hosts.</span></div>'},
+  {t:6800,html:'<div class="line"><span class="ok">  Welcome to Ubuntu 22.04.3 LTS (GNU/Linux 5.15.0-91-generic)</span></div>'},
+  {t:7400,html:'<div class="line"><span class="prompt">admin@server:~$ </span><span class="cmd">sudo cat /etc/shadow</span></div>'},
+  {t:8000,html:'<div class="line"><span class="out">  root:$6$xyz$hashed_password_here:19000:0:99999:7:::</span></div>'},
+  {t:8600,html:'<div class="line"><span class="prompt">admin@server:~$ </span><span class="cmd">./exploit.sh --target localhost --payload reverse_shell</span></div>'},
+  {t:9200,html:'<div class="line"><span class="warn">  [*] Loading payload...</span></div>'},
+  {t:9600,html:'<div class="line"><span class="warn">  [*] Establishing connection...</span></div>'},
+  {t:10100,html:'<div class="line"><span class="ok">  [+] Shell obtained! Access level: ROOT</span></div>'},
+  {t:10700,html:'<div class="line"><span class="ok">  [+] ACCESS GRANTED ██████████ 100%</span></div>'},
+  {t:11400,html:'<div class="line"><span class="prompt">root@pwned:~$ </span><span class="cursor"></span></div>'},
+];
+
+const term=document.getElementById('term');
+lines.forEach(l=>{
+  setTimeout(()=>{
+    const prev=term.querySelector('.cursor');
+    if(prev){const p=prev.closest('.line');if(p)p.remove();}
+    term.innerHTML+=l.html;
+    term.scrollTop=term.scrollHeight;
+  },l.t);
+});
+
+// Restart loop
+setInterval(()=>{
+  term.innerHTML='';
+  lines.forEach(l=>{
+    setTimeout(()=>{
+      const prev=term.querySelector('.cursor');
+      if(prev){const p=prev.closest('.line');if(p)p.remove();}
+      term.innerHTML+=l.html;
+      term.scrollTop=term.scrollHeight;
+    },l.t);
+  });
+},14000);
+
+// Live stats
+function rnd(min,max){return Math.floor(Math.random()*(max-min)+min);}
+setInterval(()=>{
+  document.getElementById('s1').textContent=rnd(10000,99999).toLocaleString();
+  document.getElementById('s2').textContent=rnd(12,89)+'%';
+  document.getElementById('s3').textContent=rnd(1,48)+'ms';
+  document.getElementById('s4').textContent=rnd(3,12);
+},1200);
+
+// Quotes
+const quotes=[
+  {q:'"The only truly secure system is one that is powered off, cast in a block of concrete and sealed in a lead-lined room."',a:'— Gene Spafford'},
+  {q:'"Hackers are breaking the systems for profit. Before, it was about intellectual curiosity and the pursuit of knowledge."',a:'— Kevin Mitnick'},
+  {q:'"The Internet is the world\'s largest library. It\'s just that all the books are on the floor."',a:'— John Allen Paulos'},
+  {q:'"Privacy is not something that I\'m merely entitled to, it\'s an absolute prerequisite."',a:'— Marlon Brando'},
+  {q:'"The quieter you become, the more you are able to hear."',a:'— Kali Linux motto'},
+  {q:'"There is no patch for human stupidity."',a:'— Unknown'},
+  {q:'"Talk is cheap. Show me the code."',a:'— Linus Torvalds'},
+  {q:'"It\'s not a bug — it\'s an undocumented feature."',a:'— Anonymous'},
+];
+let qi=0;
+function nextQuote(){
+  document.getElementById('quote').style.opacity=0;
+  setTimeout(()=>{
+    document.getElementById('quote').textContent=quotes[qi].q;
+    document.getElementById('author').textContent=quotes[qi].a;
+    document.getElementById('quote').style.opacity=1;
+    qi=(qi+1)%quotes.length;
+  },400);
+}
+document.getElementById('quote').style.transition='opacity .4s';
+nextQuote();
+setInterval(nextQuote,5000);
+
+// Clock
+function updateClock(){
+  const now=new Date();
+  document.getElementById('clock').textContent=now.toLocaleTimeString('en-US',{hour12:false})+' UTC+0530';
+}
+updateClock();setInterval(updateClock,1000);
+</script>
+</body>
+</html>
